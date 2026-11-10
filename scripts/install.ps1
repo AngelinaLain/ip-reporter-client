@@ -72,6 +72,16 @@ if ($needsConfig -and -not $Endpoint) { throw 'Supply -Endpoint for first instal
 if (-not $needsConfig -and ($Endpoint -or $TokenFile -or $DeviceId -or $AllowHttp)) {
     Write-Warning 'Existing configuration is preserved. Use -Reconfigure to change initialization settings.'
 }
+# 重新配置默认继承已验证配置的设备 ID，避免同一主机在服务端成为新机器。
+# 只读取 ID，不把旧令牌或接收地址合并到新配置。显式 ID 可用于损坏配置恢复。
+if ($needsConfig -and -not $DeviceId -and (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+    $existingDeviceId = & $BinaryPath --print-device-id --config $configPath
+    if ($LASTEXITCODE -ne 0 -or -not $existingDeviceId -or
+        $existingDeviceId -is [array] -or $existingDeviceId -cnotmatch '^[A-Za-z0-9._-]{1,128}\z') {
+        throw 'Cannot preserve device_id from existing configuration. Repair it or supply -DeviceId explicitly.'
+    }
+    $DeviceId = $existingDeviceId
+}
 if ($TokenFile) { $TokenFile = (Resolve-Path -LiteralPath $TokenFile).Path }
 
 New-Item -ItemType Directory -Force -Path $installDir, $configDir | Out-Null

@@ -164,6 +164,47 @@ class ClientIntegration(unittest.TestCase):
         self.assertIsInstance(payload["interfaces"], list)
         self.assertNotIn(self.token, body.decode("utf-8"))
 
+    def test_fresh_initialization_generates_distinct_random_identities(self):
+        identities = []
+        for index in range(2):
+            path = self.directory / f"fresh-{index}.json"
+            self.command("--init", "--config", path, "--endpoint", self.endpoint, "--allow-http")
+            identity = json.loads(path.read_text())["device_id"]
+            self.assertRegex(identity, r"^[0-9a-f]{32}$")
+            identities.append(identity)
+        self.assertNotEqual(*identities)
+        self.assertTrue(self.server.requests.empty())
+
+    def test_force_preserves_identity_without_copying_other_configuration(self):
+        self.command("--init", "--force", "--config", self.config_path,
+                     "--endpoint", "https://replacement.invalid/api/report")
+        config = json.loads(self.config_path.read_text())
+        self.assertEqual(config["device_id"], "integration-device")
+        self.assertEqual(config["endpoint"], "https://replacement.invalid/api/report")
+        self.assertEqual(config["bearer_token"], "")
+        self.assertFalse(config["allow_http"])
+        self.assertEqual(config["poll_interval_seconds"], 60)
+        result = self.command("--print-device-id", "--config", self.config_path)
+        self.assertEqual(result.stdout.strip(), "integration-device")
+        self.command("--init", "--force", "--config", self.config_path,
+                     "--endpoint", self.endpoint, "--allow-http", "--device-id", "explicit-replacement")
+        self.assertEqual(json.loads(self.config_path.read_text())["device_id"], "explicit-replacement")
+        self.assertTrue(self.server.requests.empty())
+
+    def test_corrupt_existing_configuration_requires_explicit_identity_to_recover(self):
+        for body in ('{"device_id":"old-id"}', '{"device_id":', '{"endpoint":1}'):
+            with self.subTest(body=body):
+                self.config_path.write_text(body)
+                result = self.command("--init", "--force", "--config", self.config_path,
+                                      "--endpoint", self.endpoint, "--allow-http", expected=1)
+                self.assertIn("supply --device-id explicitly", result.stderr)
+                self.assertEqual(self.config_path.read_text(), body)
+                self.command("--print-device-id", "--config", self.config_path, expected=1)
+                self.command("--init", "--force", "--config", self.config_path, "--endpoint", self.endpoint,
+                             "--allow-http", "--device-id", "recovered-identity")
+                self.assertEqual(json.loads(self.config_path.read_text())["device_id"], "recovered-identity")
+        self.assertTrue(self.server.requests.empty())
+
     def test_concurrent_initialization_never_overwrites_a_winner(self):
         race_path = self.directory / "concurrent-config.json"
         processes = []

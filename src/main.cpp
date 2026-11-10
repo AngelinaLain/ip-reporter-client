@@ -12,11 +12,11 @@
 namespace {
 void help() {
     std::cout << "ip-reporter " IP_REPORTER_VERSION "\n"
-        "Usage: ip-reporter [--config PATH] [--once | --print-payload | --check-config | --service]\n"
+        "Usage: ip-reporter [--config PATH] [--once | --print-payload | --print-device-id | --check-config | --service]\n"
         "       ip-reporter --init --config PATH --endpoint URL [options]\n"
         "Init options: --token-file PATH --device-id ID --poll-seconds 60\n"
         "              --heartbeat-seconds 300 --timeout-seconds 10 --allow-http --force\n"
-        "--init never connects. --force replaces an existing configuration.\n"
+        "--init never connects. --force replaces configuration, retaining its device ID unless explicitly supplied.\n"
         "Without a mode flag the agent runs in the foreground (for a service manager).\n";
 }
 int integer_option(const std::string& value) {
@@ -25,7 +25,7 @@ int integer_option(const std::string& value) {
     return std::stoi(value);
 }
 int run(const std::vector<std::string>& args) {
-    const std::set<std::string> switches{"--help", "--version", "--init", "--once", "--print-payload", "--check-config", "--service", "--allow-http", "--force"};
+    const std::set<std::string> switches{"--help", "--version", "--init", "--once", "--print-payload", "--print-device-id", "--check-config", "--service", "--allow-http", "--force"};
     const std::set<std::string> values{"--config", "--endpoint", "--token-file", "--device-id", "--poll-seconds", "--heartbeat-seconds", "--timeout-seconds"};
     std::map<std::string, std::string> options;
     for (std::size_t i = 1; i < args.size(); ++i) {
@@ -40,7 +40,7 @@ int run(const std::vector<std::string>& args) {
     if (options.count("--help")) { help(); return 0; }
     if (options.count("--version")) { std::cout << IP_REPORTER_VERSION << '\n'; return 0; }
     int modes = 0;
-    for (const auto* mode : {"--init", "--once", "--print-payload", "--check-config", "--service"}) modes += options.count(mode) ? 1 : 0;
+    for (const auto* mode : {"--init", "--once", "--print-payload", "--print-device-id", "--check-config", "--service"}) modes += options.count(mode) ? 1 : 0;
     if (modes > 1) throw std::runtime_error("select only one command mode");
     const auto path = options.count("--config") ? std::filesystem::u8path(options["--config"]) : ip_reporter::default_config_path();
     if (options.count("--init")) {
@@ -48,7 +48,15 @@ int run(const std::vector<std::string>& args) {
         if (std::filesystem::exists(path) && !options.count("--force")) throw std::runtime_error("configuration exists; use --force to replace it");
         ip_reporter::Config config;
         config.endpoint = options["--endpoint"];
-        config.device_id = options.count("--device-id") ? options["--device-id"] : ip_reporter::make_device_id();
+        if (options.count("--device-id")) config.device_id = options["--device-id"];
+        else if (std::filesystem::exists(path)) {
+            // 重新配置仅继承设备身份，地址、令牌及其他选项仍由本次参数决定。
+            // 已损坏的配置不能静默变成新设备；显式传入 ID 才允许恢复。
+            try { config.device_id = ip_reporter::load_config(path).device_id; }
+            catch (const std::exception&) {
+                throw std::runtime_error("cannot preserve device_id from existing configuration; repair it or supply --device-id explicitly");
+            }
+        } else config.device_id = ip_reporter::make_device_id();
         config.allow_http = options.count("--allow-http") != 0;
         if (options.count("--poll-seconds")) config.poll_interval_seconds = integer_option(options["--poll-seconds"]);
         if (options.count("--heartbeat-seconds")) config.heartbeat_interval_seconds = integer_option(options["--heartbeat-seconds"]);
@@ -76,6 +84,7 @@ int run(const std::vector<std::string>& args) {
     }
     const auto config = ip_reporter::load_config(path);
     if (options.count("--check-config")) { std::cout << "Configuration valid.\n"; return 0; }
+    if (options.count("--print-device-id")) { std::cout << config.device_id << '\n'; return 0; }
     if (options.count("--print-payload")) {
         ip_reporter::print_stdout_utf8(ip_reporter::make_payload(config, ip_reporter::collect_snapshot(), "manual", 1, 0)
             .dump(2, ' ', false, nlohmann::json::error_handler_t::replace) + "\n");

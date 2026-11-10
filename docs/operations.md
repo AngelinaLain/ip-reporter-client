@@ -12,6 +12,8 @@
 
 `--init` 应用于新的配置路径，已有文件需要显式增加 `--force` 才会覆盖。配置所在目录需要事先存在，初始化命令不会自动建目录；安装脚本负责建目录，并先使用临时配置验证，再替换正式配置。手工操作正式配置前应备份，备份也需要限制读取权限。
 
+1.1.2 起，`--init --force` 在未指定 `--device-id` 时继承已有有效配置的设备标识，避免修改地址后出现重复机器；其他字段由本次参数和默认值重建。旧配置损坏或校验失败时会拒绝隐式覆盖，需要修复旧配置或明确传入 `--device-id` 恢复。更换设备身份仍可显式指定新 ID。首次初始化新路径保持随机生成 ID。
+
 ## 配置字段
 
 | 字段 | 默认值 | 约束 / 说明 |
@@ -37,12 +39,13 @@ Windows 对网络请求使用统一截止时间和异步取消。POSIX 使用 li
 ip-reporter --help
 ip-reporter --version
 ip-reporter --check-config --config /path/to/config.json
+ip-reporter --print-device-id --config /path/to/config.json
 ip-reporter --print-payload --config /path/to/config.json
 ip-reporter --once --config /path/to/config.json
 ip-reporter --config /path/to/config.json
 ```
 
-`--check-config` 不联网；`--print-payload` 采集并打印当前 JSON，不发送。`--once` 只尝试一次发送，以退出码表示成功或失败；常驻模式会重试。Windows 调试时可直接运行 `.exe`，作为系统服务运行时由安装器添加 `--service`。
+`--check-config` 不联网；`--print-device-id` 校验配置后只打印设备标识，可用于重新配置时继承身份，不输出 Token；`--print-payload` 采集并打印当前 JSON，不发送。`--once` 只尝试一次发送，以退出码表示成功或失败；常驻模式会重试。Windows 调试时可直接运行 `.exe`，作为系统服务运行时由安装器添加 `--service`。
 
 常见退出码：`0` 成功或正常停止，`1` 为单次上报失败，`2` 为参数、配置或运行异常。服务管理器对异常退出的重启策略可能不同。
 
@@ -112,7 +115,9 @@ sysrc ip_reporter_enable
 
 保存新版本二进制后再次执行安装器并指定 `--binary` / `-BinaryPath`。已有配置默认保留，`device_id` 和 Token 不变。修改初始化参数需显式增加 `--reconfigure` / `-Reconfigure`，否则传入的新接收地址不会覆盖现有配置。
 
-重新配置会完整重建配置，不会与旧字段合并：省略 `device-id` 会生成新的设备标识，省略 `token-file` 会清空 Token，其余未指定项回到默认值。要保持接收端设备记录和鉴权，请显式传入原标识及 Token 文件；只调整单个字段也可直接以管理员身份编辑配置、校验后重启。停止服务、替换程序或配置、再启动会产生短暂上报间隔。
+1.1.2 起，重新配置默认继承旧配置的 `device_id`，显式传入 `--device-id` / `-DeviceId` 时使用指定值。除此以外不合并旧字段：省略 `token-file` 会清空 Token，其余未指定项回到默认值；需要保留鉴权时传入相应 Token 文件。旧配置损坏时会在停止服务之前报错，修复配置或明确传入设备 ID 后重试。只调整单个字段也可直接以管理员身份编辑配置、校验后重启。停止服务、替换程序或配置、再启动会产生短暂上报间隔。
+
+每台设备应持续使用同一份配置。开发目录的临时配置与已安装服务配置分别初始化时会有不同 ID；删除配置后重新安装也会生成新 ID。遇到重复机器，先核对各记录的 ID、网卡和最后上报时间，停止多余实例，并在重新配置或重装时保留原 ID。主机名称可能重名，不应单独用来识别设备。
 
 安装器会在停止原服务之前验证候选配置，但不是完整事务安装系统；复制、权限或服务管理器报错后，应检查实际服务状态并恢复之前的程序与配置。项目不提供自动下载更新。
 
@@ -148,6 +153,7 @@ sudo sh scripts/uninstall.sh --purge-config
 | --- | --- |
 | `--init` | 写入配置，然后退出；不发送 |
 | `--check-config` | 校验配置，然后退出；不发送 |
+| `--print-device-id` | 校验配置并打印设备标识，然后退出；不发送 |
 | `--print-payload` | 打印当前 JSON，然后退出；不发送 |
 | `--once` | 发送一次，然后退出；紧接着检查 `$LASTEXITCODE` |
 | 只有 `--config` | 持续检查、上报和发送心跳，直到按 `Ctrl+C` 或收到停止请求 |

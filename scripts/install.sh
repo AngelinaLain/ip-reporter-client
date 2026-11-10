@@ -9,7 +9,7 @@ Usage: sudo sh scripts/install.sh --endpoint URL [options]
   --binary PATH             Built ip-reporter binary (auto-detected if omitted)
   --endpoint URL            HTTP(S) receiver URL; required for initial config
   --token-file PATH         Read bearer token from file, never from argv
-  --device-id ID            Stable device identifier (auto-generated if omitted)
+  --device-id ID            Explicit identity (existing ID retained on reconfigure)
   --poll-seconds N          Address check interval (default: 60)
   --heartbeat-seconds N     Heartbeat interval; 0 disables it (default: 300)
   --timeout-seconds N       Request timeout (default: 10)
@@ -77,6 +77,15 @@ if [ "$needs_config" = 1 ] && [ -z "$endpoint" ]; then
 fi
 if [ "$needs_config" = 0 ] && { [ -n "$endpoint" ] || [ -n "$token_file" ] || [ -n "$device_id" ] || [ "$allow_http" = 1 ]; }; then
     echo 'Existing configuration is preserved; use --reconfigure to change settings.' >&2
+fi
+# 使用程序校验旧配置并仅读取 ID；配置损坏时要求显式 ID，防止静默新增机器。
+if [ "$needs_config" = 1 ] && [ -z "$device_id" ] && [ -f "$config_path" ]; then
+    if ! device_id=$("$binary" --print-device-id --config "$config_path"); then
+        echo 'Cannot preserve device_id from existing configuration. Repair it or supply --device-id explicitly.' >&2
+        exit 2
+    fi
+    case "$device_id" in ''|*[!A-Za-z0-9._-]*) echo 'Existing device_id is invalid.' >&2; exit 2 ;; esac
+    [ "${#device_id}" -le 128 ] || { echo 'Existing device_id is invalid.' >&2; exit 2; }
 fi
 cleanup() { rm -f "$new_binary" "$new_config"; }
 trap cleanup EXIT

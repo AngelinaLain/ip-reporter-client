@@ -5,8 +5,8 @@
 更新 `CMakeLists.txt` 中的版本号，提交并推送。在准备发布的提交上创建与该版本一致的标签，例如：
 
 ```sh
-git tag -a v1.1.0 -m 'IP Reporter v1.1.0'
-git push origin v1.1.0
+git tag -a v1.1.2 -m 'IP Reporter v1.1.2'
+git push origin v1.1.2
 ```
 
 标签触发所有平台的编译、CTest 与 CPack。Linux 任务使用指定发行版容器生成兼容该发行版的二进制，Windows 与 macOS 任务使用相应架构的 GitHub Runner。版本标签必须和 CMake 项目版本完全相同。全部构建成功后，发布任务验证每个平台的包和校验文件，并将完整资产上传到草稿，随后发布。
@@ -24,12 +24,12 @@ git push origin v1.1.0
 ```json
 {
   "schemaVersion": 1,
-  "version": "1.1.0",
-  "tag": "v1.1.0",
+  "version": "1.1.2",
+  "tag": "v1.1.2",
   "packages": [
     {
       "platform": "windows-x86_64",
-      "file": "ip-reporter-1.1.0-windows-x86_64.zip",
+      "file": "ip-reporter-1.1.2-windows-x86_64.zip",
       "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "size": 123456
     }

@@ -133,7 +133,7 @@ elif name == "service":
 elif name == "sysrc":
     assert args[0] in ("ip_reporter_enable=YES", "-x")
 elif name == "ip-reporter":
-    options = dict(zip(args[::2], args[1::2])) if args[0] not in ("--init", "--check-config") else dict(zip(args[1::2], args[2::2]))
+    options = dict(zip(args[1::2], args[2::2]))
     config = guarded(options["--config"])
     if args[0] == "--init":
         if options["--endpoint"] == "invalid":
@@ -144,6 +144,14 @@ elif name == "ip-reporter":
         config.write_text(json.dumps(payload), encoding="utf-8")
     elif args[0] == "--check-config":
         assert json.loads(config.read_text())["endpoint"].startswith("https://")
+    elif args[0] == "--print-device-id":
+        try:
+            payload = json.loads(config.read_text())
+            assert payload["endpoint"].startswith("https://")
+            assert isinstance(payload["device_id"], str) and payload["device_id"]
+        except (ValueError, KeyError, AssertionError):
+            finish(2)
+        print(payload["device_id"])
     else:
         raise RuntimeError("Installer must never launch an unsupervised agent")
 else:
@@ -234,6 +242,21 @@ class InstallerLifecycleTest(unittest.TestCase):
             self.assertEqual(config.read_bytes(), first_config)
             new_events = state()["events"][event_count:]
             self.assertFalse(any(event[0] in ("systemctl", "rc-service", "launchctl", "service") and any(item in ("stop", "bootout", "onestop") for item in event[1:]) for event in new_events))
+
+            # 重新配置保留身份，但不把旧 Token、地址合并到候选配置。
+            invoke("install.sh", "--reconfigure", "--endpoint", "https://retained.example/report")
+            retained = json.loads(config.read_text())
+            self.assertEqual(retained["device_id"], "first-device")
+            self.assertEqual(retained["endpoint"], "https://retained.example/report")
+            self.assertEqual(retained["bearer_token"], "")
+            config.write_text('{"device_id":"first-device"}')
+            corrupt = config.read_bytes()
+            event_count = len(state()["events"])
+            result = invoke("install.sh", "--reconfigure", "--endpoint", "https://recovery.example/report", success=False)
+            self.assertIn("supply --device-id explicitly", result.stderr)
+            self.assertEqual(config.read_bytes(), corrupt)
+            self.assertTrue(state()["active"])
+            self.assertFalse(any(event[0] in ("systemctl", "rc-service", "launchctl", "service") and any(item in ("stop", "bootout", "onestop") for item in event[1:]) for event in state()["events"][event_count:]))
 
             invoke("install.sh", "--reconfigure", "--endpoint", "https://second.example/report", "--device-id", "second-device")
             second_config = config.read_bytes()

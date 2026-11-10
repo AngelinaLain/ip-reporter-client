@@ -34,7 +34,7 @@ Linux 按发行版及架构分别构建。其他系统和版本可[从源码构�
 sudo sh usr/share/ip-reporter/scripts/install.sh --endpoint https://report.example.com/api/report --token-file /root/report-token.txt
 ```
 
-macOS 使用 `share/ip-reporter/scripts/install.sh`。Token 文件只包含上报 Token 一行。已安装设备重新运行安装脚本时保留原配置，需要更换上报地址或 Token 时传入原设备 ID，并加 `--reconfigure` 或 `-Reconfigure`。
+macOS 使用 `share/ip-reporter/scripts/install.sh`。Token 文件只包含上报 Token 一行。已安装设备重新运行安装脚本时保留原配置；需要更换上报地址或 Token 时加 `--reconfigure` 或 `-Reconfigure`。1.1.2 起重新配置默认继承已有设备 ID，显式指定新 ID 才更换身份；其他参数按本次输入重建，需要认证时仍须提供 Token 文件。
 
 上报接口见[协议说明](docs/protocol.md)，手动安装、更新、排错和卸载见[运维说明](docs/operations.md)与[包使用说明](packaging/README.md)。
 
