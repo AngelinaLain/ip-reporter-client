@@ -1,0 +1,13 @@
+#!/bin/sh
+# PROVIDE: ip_reporter
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+. /etc/rc.subr
+name="ip_reporter"
+rcvar="ip_reporter_enable"
+load_rc_config "$name"
+: ${ip_reporter_enable:="NO"}
+pidfile="/var/run/ip_reporter.pid"
+command="/usr/sbin/daemon"
+command_args="-r -R 30 -P ${pidfile} -u ip_reporter /usr/local/bin/ip-reporter --config /etc/ip-reporter/config.json"
+run_rc_command "$1"

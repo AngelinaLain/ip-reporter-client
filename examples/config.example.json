@@ -1,0 +1,10 @@
+{
+  "endpoint": "https://report.example.com/api/report",
+  "device_id": "replace-with-a-unique-device-id",
+  "bearer_token": "replace-with-a-random-token",
+  "poll_interval_seconds": 60,
+  "heartbeat_interval_seconds": 300,
+  "request_timeout_seconds": 10,
+  "allow_http": false,
+  "log_level": "error"
+}

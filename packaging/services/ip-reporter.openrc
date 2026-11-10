@@ -1,0 +1,10 @@
+#!/sbin/openrc-run
+description="IP Reporter address and heartbeat agent"
+command="/usr/local/bin/ip-reporter"
+command_args="--config /etc/ip-reporter/config.json"
+command_user="ip-reporter"
+supervisor="supervise-daemon"
+respawn_delay=30
+respawn_max=5
+respawn_period=300
+depend() { need net; }

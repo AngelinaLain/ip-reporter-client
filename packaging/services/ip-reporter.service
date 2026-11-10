@@ -1,0 +1,31 @@
+[Unit]
+Description=IP Reporter address and heartbeat agent
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ip-reporter
+ExecStart=/usr/local/bin/ip-reporter --config /etc/ip-reporter/config.json
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+Nice=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

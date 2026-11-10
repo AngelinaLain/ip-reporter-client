@@ -1,0 +1,149 @@
+name: Build and publish client
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - id: matrix
+        name: Validate the tag and load the build matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            args+=(--tag "$GITHUB_REF_NAME")
+          fi
+          matrix=$(python3 ci/release_assets.py matrix "${args[@]}")
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      PACKAGE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        if: runner.os != 'Linux'
+        with:
+          python-version: '3.13'
+      - name: Build and test in the target Linux distribution
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          BUILD_IMAGE: ${{ matrix.container }}
+          NATIVE_PACKAGE: ${{ matrix.native }}
+        run: |
+          docker run --rm --volume "$GITHUB_WORKSPACE:/source" --workdir /source \
+            "$BUILD_IMAGE" sh ci/build-linux.sh "$PACKAGE_PLATFORM" "$NATIVE_PACKAGE"
+      - name: Build, test and package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GENERATOR_ARCH: ${{ matrix.generatorArch }}
+        run: |
+          foreach ($script in @('scripts/install.ps1', 'scripts/uninstall.ps1')) {
+            $errors = $null
+            $tokens = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path -LiteralPath $script).Path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $errors | Write-Error; exit 1 }
+          }
+          cmake -S . -B build -A $env:GENERATOR_ARCH -DBUILD_TESTING=ON "-DIP_REPORTER_PACKAGE_PLATFORM=$env:PACKAGE_PLATFORM"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build -C Release --output-on-failure --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cpack --config build/CPackConfig.cmake -C Release -G ZIP
+      - name: Build, test and package macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          sh -n scripts/install.sh
+          sh -n scripts/uninstall.sh
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            "-DCMAKE_OSX_ARCHITECTURES=$(uname -m)" -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            "-DIP_REPORTER_PACKAGE_PLATFORM=$PACKAGE_PLATFORM"
+          cmake --build build --parallel 2
+          ctest --test-dir build --output-on-failure --parallel 2
+          cpack --config build/CPackConfig.cmake -C Release -G TGZ
+      - name: Verify package names and checksums
+        shell: bash
+        if: runner.os != 'Windows'
+        run: python3 ci/release_assets.py verify --platform "$PACKAGE_PLATFORM" --packages build/packages
+      - name: Verify package names and checksums
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: python ci/release_assets.py verify --platform $env:PACKAGE_PLATFORM --packages build/packages
+      - name: Upload tested build packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: client-${{ matrix.platform }}
+          path: |
+            build/packages/*.zip
+            build/packages/*.tar.gz
+            build/packages/*.deb
+            build/packages/*.rpm
+            build/packages/*.sha256
+          compression-level: 0
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: client-*
+          path: artifacts
+      - name: Generate the install index and release checksums
+        run: python3 ci/release_assets.py prepare --tag "$GITHUB_REF_NAME" --artifacts artifacts --output release
+      - name: Upload all files to a draft, then publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            printf 'Release %s already exists. Review it before retrying.\n' "$tag" >&2
+            exit 1
+          fi
+          gh release create "$tag" release/* --repo "$GITHUB_REPOSITORY" \
+            --draft --verify-tag --title "IP Reporter $tag" --generate-notes
+          release_id=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            --field draft=false --raw-field make_latest=legacy --jq .html_url
