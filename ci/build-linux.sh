@@ -8,7 +8,8 @@ case "$platform" in
     ubuntu*|debian*)
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y --no-install-recommends build-essential cmake libcurl4-openssl-dev ca-certificates python3 dpkg-dev
+        # CPack 需要 file 识别 ELF 文件，才能生成 DEB 的运行时依赖。
+        apt-get install -y --no-install-recommends build-essential cmake libcurl4-openssl-dev ca-certificates python3 dpkg-dev file
         ;;
     rocky9-*)
         dnf install -y gcc-c++ cmake libcurl-devel ca-certificates python3 make rpm-build

@@ -11,6 +11,7 @@ from pathlib import Path
 import queue
 import re
 import socket
+import socketserver
 import ssl
 import subprocess
 import tempfile
@@ -21,6 +22,12 @@ import unittest
 
 class Receiver(http.server.ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self):
+        # 测试监听数字回环地址，直接使用地址，避免 macOS 反向 DNS 查询拖慢启动。
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
 
     def __init__(self, address, handler):
         super().__init__(address, handler)

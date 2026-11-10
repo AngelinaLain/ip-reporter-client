@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import socket
+import socketserver
 import sys
 
 MAX_BODY_BYTES = 65536
@@ -163,6 +164,12 @@ def create_server(listen, port, report_path, bearer_token, output):
 
     class Server(http.server.HTTPServer):
         address_family = family
+
+        def server_bind(self):
+            # 监听名称不参与处理报告，直接取绑定结果，避免启动时额外查询反向 DNS。
+            socketserver.TCPServer.server_bind(self)
+            self.server_name = self.server_address[0]
+            self.server_port = self.server_address[1]
 
     server = Server((listen, port), ReportHandler)
     server.report_path = report_path

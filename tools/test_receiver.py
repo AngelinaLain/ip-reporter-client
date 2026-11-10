@@ -6,6 +6,7 @@ import io
 import json
 import threading
 import unittest
+from unittest.mock import patch
 
 import receiver
 
@@ -28,6 +29,15 @@ SAMPLE = {
 
 
 class ReceiverTests(unittest.TestCase):
+    def test_numeric_listener_does_not_resolve_reverse_dns(self):
+        with patch("socket.getfqdn", side_effect=AssertionError("Reverse DNS is unnecessary")):
+            server = receiver.create_server("127.0.0.1", 0, "/api/report", "", io.StringIO())
+            try:
+                self.assertEqual(server.server_name, "127.0.0.1")
+                self.assertGreater(server.server_port, 0)
+            finally:
+                server.server_close()
+
     @classmethod
     def setUpClass(cls):
         cls.output = io.StringIO()
