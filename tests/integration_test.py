@@ -14,6 +14,7 @@ import socket
 import socketserver
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -34,6 +35,13 @@ class Receiver(http.server.ThreadingHTTPServer):
         self.requests = queue.Queue()
         self.response_status = 204
         self.delay = 0.0
+
+    def handle_error(self, request, client_address):
+        # WinHTTP resets the test socket after rejecting an untrusted TLS
+        # certificate. That is expected and should not print a CI traceback.
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -355,6 +363,7 @@ class ClientIntegration(unittest.TestCase):
             server.server_close()
             worker.join(timeout=5)
 
+    @unittest.skipIf(os.name == "nt", "CURL_CA_BUNDLE applies only to the POSIX libcurl implementation")
     def test_explicit_tls_ca_bundle_is_honored(self):
         fixtures = Path(__file__).resolve().parent / "fixtures"
         certificate = fixtures / "localhost-test.crt"
