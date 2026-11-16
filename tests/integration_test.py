@@ -99,7 +99,10 @@ class ClientIntegration(unittest.TestCase):
         environment["NO_PROXY"] = "*"
         return environment
 
-    def command(self, *args, expected=0, timeout=12):
+    def command(self, *args, expected=0, timeout=12, extra_environment=None):
+        environment = self.environment()
+        if extra_environment:
+            environment.update(extra_environment)
         result = subprocess.run(
             [self.binary, *map(str, args)],
             capture_output=True,
@@ -107,7 +110,7 @@ class ClientIntegration(unittest.TestCase):
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
-            env=self.environment(),
+            env=environment,
         )
         if expected is not None:
             if expected == 0:
@@ -347,6 +350,29 @@ class ClientIntegration(unittest.TestCase):
             self.config_path.write_text(json.dumps(config), encoding="utf-8")
             self.command("--once", "--config", self.config_path, expected=1)
             self.assertTrue(server.requests.empty(), "untrusted TLS must not receive the bearer token")
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
+
+    def test_explicit_tls_ca_bundle_is_honored(self):
+        fixtures = Path(__file__).resolve().parent / "fixtures"
+        certificate = fixtures / "localhost-test.crt"
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certificate, fixtures / "localhost-test.key")
+        server = Receiver(("127.0.0.1", 0), Handler)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            config = json.loads(self.config_path.read_text(encoding="utf-8-sig"))
+            config["endpoint"] = f"https://127.0.0.1:{server.server_port}/api/report"
+            config["allow_http"] = False
+            self.config_path.write_text(json.dumps(config), encoding="utf-8")
+            self.command("--once", "--config", self.config_path,
+                         extra_environment={"CURL_CA_BUNDLE": str(certificate)})
+            path, _, _ = server.requests.get(timeout=2)
+            self.assertEqual(path, "/api/report")
         finally:
             server.shutdown()
             server.server_close()

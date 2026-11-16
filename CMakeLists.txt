@@ -1,9 +1,21 @@
 cmake_minimum_required(VERSION 3.20)
 project(ip-reporter VERSION 1.1.2 LANGUAGES CXX)
 
+option(IP_REPORTER_STATIC "Build a fully static Linux executable (intended for musl toolchains)" OFF)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+if(IP_REPORTER_STATIC)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "IP_REPORTER_STATIC is supported only for Linux targets")
+  endif()
+  # Do not silently produce a binary that still selects shared libcurl or one of
+  # its transitive dependencies. The release job also inspects the final ELF.
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+  set(CURL_USE_STATIC_LIBS ON)
+  add_link_options(-static)
+endif()
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
@@ -22,6 +34,15 @@ if(WIN32)
 else()
   find_package(CURL 7.34 REQUIRED)
   target_link_libraries(ip_reporter_core PUBLIC CURL::libcurl)
+  if(IP_REPORTER_STATIC)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBCURL_PC REQUIRED libcurl)
+    # FindCURL locates libcurl.a, while pkg-config supplies the complete ordered
+    # dependency list needed by a static libcurl (TLS, DNS, compression, etc.).
+    target_link_directories(ip_reporter_core PUBLIC ${LIBCURL_PC_STATIC_LIBRARY_DIRS})
+    target_link_libraries(ip_reporter_core PUBLIC ${LIBCURL_PC_STATIC_LIBRARIES})
+    target_link_options(ip_reporter_core PUBLIC ${LIBCURL_PC_STATIC_LDFLAGS_OTHER})
+  endif()
 endif()
 if(MSVC)
   target_compile_options(ip_reporter_core PRIVATE /W4 /utf-8 /permissive-)

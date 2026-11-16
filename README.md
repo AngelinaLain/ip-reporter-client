@@ -14,9 +14,10 @@ C++17 客户端读取机器的网卡 ID、IPv4、IPv6 和 MAC，并通过 HTTPS 
 | Debian 12 / 13 x64 | `debian12-x86_64` / `debian13-x86_64` |
 | Rocky Linux 9 x64 | `rocky9-x86_64` |
 | Alpine Linux 3.22 x64 | `alpine3.22-x86_64` |
+| 静态 Linux (musl) x64 / ARM64 | `linux-musl-x86_64` / `linux-musl-arm64` |
 | macOS 13+ Intel / Apple Silicon | `macos-x86_64` / `macos-arm64` |
 
-Linux 按发行版及架构分别构建。其他系统和版本可[从源码构建](docs/build.md)，FreeBSD 可以使用附带的 rc.d 安装脚本。
+Linux 按发行版及架构分别构建。`linux-musl-*` 为完全静态 ELF，不依赖目标机的 glibc/musl、libstdc++、libcurl 或 TLS 动态库，适合与 CPU 架构匹配的群晖 DSM 等 Linux 设备通过 SSH 安装。目标机仍需可用的 CA 证书库，并由 systemd/OpenRC 或设备自带的服务框架托管进程。该 TGZ 不是可在 DSM “套件中心”上传的 SPK。详见[构建与群晖说明](docs/build.md#musl-全静态-linux--群晖)。其他系统和版本可[从源码构建](docs/build.md)，FreeBSD 可以使用附带的 rc.d 安装脚本。
 
 ## 注册服务
 

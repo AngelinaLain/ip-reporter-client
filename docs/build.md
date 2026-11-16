@@ -5,7 +5,7 @@
 | 目标 | 核心网络实现 | 服务接入 | 说明 |
 | --- | --- | --- | --- |
 | Windows 10 / 11、现代 Windows Server | WinHTTP + IP Helper | Windows SCM | 本机可生成 `.exe`；安装脚本需管理员 PowerShell 5.1+ |
-| Linux x86_64 / ARM64 等 | libcurl + getifaddrs | systemd / OpenRC | 使用对应架构工具链；动态链接库需安装在目标系统 |
+| Linux x86_64 / ARM64 等 | libcurl + getifaddrs | systemd / OpenRC | 普通包需匹配目标发行版；`linux-musl-*` 为全静态通用 Linux ELF |
 | macOS Intel / Apple Silicon | libcurl + getifaddrs | launchd | 分别编译 x86_64 / arm64，或自行制作 Universal Binary |
 | FreeBSD | libcurl + getifaddrs | rc.d | 提供实现和脚本，需在 FreeBSD 目标环境验证 |
 
@@ -62,6 +62,27 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
+### musl 全静态 Linux / 群晖
+
+发布矩阵在 Alpine musl 容器内原生构建 `linux-musl-x86_64` 和 `linux-musl-arm64`。该产物把 musl、C++ 运行库、libcurl、OpenSSL 及 libcurl 的传递依赖都链入单一 ELF；CI 会拒绝任何带 `PT_INTERP` 或 `DT_NEEDED` 的所谓“静态”产物。本地复现构建：
+
+```sh
+docker run --rm -e STATIC_BUILD=true -v "$PWD:/source" -w /source alpine:3.22 \
+  sh ci/build-linux.sh "linux-musl-$(uname -m | sed 's/aarch64/arm64/')" ""
+```
+
+也可在已备齐静态 libcurl 及其依赖的 musl 工具链中直接使用 CMake：
+
+```sh
+cmake -S . -B build-static -DCMAKE_BUILD_TYPE=Release \
+  -DIP_REPORTER_STATIC=ON -DIP_REPORTER_PACKAGE_PLATFORM=linux-musl-x86_64
+cmake --build build-static --parallel
+```
+
+群晖使用时先在 SSH 中用 `uname -m` 确认架构：`x86_64` 选 x86_64 包，`aarch64` 选 ARM64 包。解压后可先执行 `usr/bin/ip-reporter --version`，再按 README 运行 `usr/share/ip-reporter/scripts/install.sh`。安装器只能直接注册它能识别的 systemd/OpenRC；若 DSM 不暴露其中一种管理器，请把前台命令 `/usr/local/bin/ip-reporter --config /etc/ip-reporter/config.json` 纳入 DSM 的套件/服务生命周期，不要伪装成 SPK 上传。群晖官方的 [DSM 套件脚本规范](https://help.synology.com/developer-guide/synology_package/scripts.html) 要求使用 `start-stop-status` 管理启停，而官方[运行时说明](https://help.synology.com/developer-guide/getting_started/system_requirement.html) 明确指出 DSM 6/7 套件不互相兼容；要在“套件中心”手动安装，仍需另行制作并实机验证 SPK。
+
+静态链接不会把公共 CA 证书嵌入程序。HTTPS 仍需目标设备提供 CA 库；程序会在尊重 `CURL_CA_BUNDLE` / `SSL_CERT_FILE` / `SSL_CERT_DIR` 管理员设置的前提下，依次查找 Alpine、Debian/Ubuntu/Synology DSM、RHEL 和 SUSE 的常见系统 CA 路径。同时需保持 DSM 系统时间正确。“全静态”解决用户态动态库 ABI，不代表所有 Linux 内核版本、CPU 子架构或 DSM 服务机制都已经实机认证。
+
 ### macOS
 
 安装 Xcode Command Line Tools 和 CMake。使用已安装的 Homebrew 时可执行：
@@ -96,7 +117,7 @@ CTest 包含核心逻辑测试和可用时的 Python 端到端测试。端到端
 
 ## 打包
 
-使用[CPack](https://cmake.org/cmake/help/latest/manual/cpack.1.html)为当前构建目标打包。包中的二进制仍受操作系统、CPU 架构、libc 和 TLS 动态依赖限制；在较新 Linux 构建的程序不保证能在较旧 glibc 系统运行。
+使用[CPack](https://cmake.org/cmake/help/latest/manual/cpack.1.html)为当前构建目标打包。普通包中的二进制仍受操作系统、CPU 架构、libc 和 TLS 动态依赖限制；在较新 Linux 构建的程序不保证能在较旧 glibc 系统运行。`linux-musl-*` 例外，其全静态链接属性由 CI 额外验证。
 
 ```sh
 # 通用归档

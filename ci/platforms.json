@@ -8,6 +8,8 @@
   { "platform": "debian13-x86_64", "runner": "ubuntu-24.04", "container": "debian:13", "native": "DEB" },
   { "platform": "rocky9-x86_64", "runner": "ubuntu-24.04", "container": "rockylinux:9", "native": "RPM" },
   { "platform": "alpine3.22-x86_64", "runner": "ubuntu-24.04", "container": "alpine:3.22" },
+  { "platform": "linux-musl-x86_64", "runner": "ubuntu-24.04", "container": "alpine:3.22", "static": true },
+  { "platform": "linux-musl-arm64", "runner": "ubuntu-24.04-arm", "container": "alpine:3.22", "static": true },
   { "platform": "macos-x86_64", "runner": "macos-15-intel" },
   { "platform": "macos-arm64", "runner": "macos-15" }
 ]

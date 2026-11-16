@@ -21,9 +21,9 @@ cpack --config "$(pwd)/build/CPackConfig.cmake" -C Release -G RPM -B /tmp/ip-rep
 
 此时 RPM 及校验文件输出到 `/tmp/ip-reporter-rpm-packages/`。
 
-输出位于 `build/packages/`，每个包附带 SHA-256 校验文件。Windows 默认 ZIP，macOS、Linux 默认 TGZ。GitHub Actions 按平台和架构编译、测试后，发布 ZIP/TGZ，并为 Debian/Ubuntu 目标构建 DEB，为 Rocky Linux 9 构建 RPM。依赖系统 libcurl 的 Unix 二进制需要与运行主机兼容的动态库及 C/C++ 运行时。
+输出位于 `build/packages/`，每个包附带 SHA-256 校验文件。Windows 默认 ZIP，macOS、Linux 默认 TGZ。GitHub Actions 按平台和架构编译、测试后，发布 ZIP/TGZ，并为 Debian/Ubuntu 目标构建 DEB，为 Rocky Linux 9 构建 RPM。依赖系统 libcurl 的普通 Unix 二进制需要与运行主机兼容的动态库及 C/C++ 运行时；`linux-musl-x86_64` 与 `linux-musl-arm64` 为不带 ELF 动态依赖的 TGZ。
 
-工件名包含构建平台与架构，例如 `ip-reporter-1.0.0-ubuntu24.04-x86_64.tar.gz`、`ip-reporter_1.0.0_ubuntu24.04-x86_64.deb`、`ip-reporter-1.0.0-ubuntu24.04-x86_64.rpm`。RPM 是包格式：在 Ubuntu 24.04 上构建的 RPM 仍依赖该环境的 glibc、libstdc++、libcurl/TLS ABI，不能视为 RHEL/Fedora 通用二进制。应在目标发行版或兼容构建容器中重新编译打包。交叉编译时通过 `-DIP_REPORTER_PACKAGE_PLATFORM=<平台-架构>` 指定标签。
+工件名包含构建平台与架构，例如 `ip-reporter-1.0.0-ubuntu24.04-x86_64.tar.gz`、`ip-reporter_1.0.0_ubuntu24.04-x86_64.deb`、`ip-reporter-1.0.0-ubuntu24.04-x86_64.rpm`。RPM 是包格式：在 Ubuntu 24.04 上构建的 RPM 仍依赖该环境的 glibc、libstdc++、libcurl/TLS ABI，不能视为 RHEL/Fedora 通用二进制。应在目标发行版或兼容构建容器中重新编译打包。`linux-musl-*` 包专用于需要单文件静态 Linux ELF 的设备，但仍不是 Synology SPK。交叉编译时通过 `-DIP_REPORTER_PACKAGE_PLATFORM=<平台-架构>` 指定标签。
 
 Debian/Ubuntu 打包主机建议安装 `build-essential cmake libcurl4-openssl-dev dpkg-dev rpm`；其中 `dpkg-dev` 提供 `dpkg-shlibdeps`、`rpm` 提供 `rpmbuild`。Fedora/RHEL 对应构建依赖通常为 `gcc-c++ cmake libcurl-devel rpm-build`。DEB/RPM 生成器会扫描二进制的动态库依赖，接收机仍需通过包管理器满足这些依赖。
 

@@ -1,6 +1,7 @@
 #include "ip_reporter/agent.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <stdexcept>
 #ifdef _WIN32
@@ -8,6 +9,7 @@
 #include <winhttp.h>
 #else
 #include <curl/curl.h>
+#include <unistd.h>
 #endif
 
 namespace ip_reporter {
@@ -94,6 +96,7 @@ HttpResult post_json(const Config& config, const std::string& body) {
     RequestState state;
     if (!state.ready || !state.closed) { WinHttpCloseHandle(raw); return {false, 0, "cannot allocate HTTP event"}; }
     const DWORD_PTR context = reinterpret_cast<DWORD_PTR>(&state);
+
     if (!WinHttpSetOption(raw, WINHTTP_OPTION_CONTEXT_VALUE, const_cast<DWORD_PTR*>(&context), sizeof(context)) ||
         WinHttpSetStatusCallback(raw, request_callback, WINHTTP_CALLBACK_FLAG_SENDREQUEST_COMPLETE |
             WINHTTP_CALLBACK_FLAG_HEADERS_AVAILABLE | WINHTTP_CALLBACK_FLAG_REQUEST_ERROR | WINHTTP_CALLBACK_FLAG_HANDLES, 0) == WINHTTP_INVALID_STATUS_CALLBACK) {
@@ -129,6 +132,24 @@ std::size_t discard_response(char*, std::size_t size, std::size_t count, void* c
     return bytes;
 }
 int transfer_progress(void*, curl_off_t, curl_off_t, curl_off_t, curl_off_t) { return stop_requested() ? 1 : 0; }
+const char* portable_ca_bundle() {
+    // Static libcurl otherwise keeps the build container's CA path, which is
+    // not necessarily present on the NAS.
+    for (const auto* variable : {"CURL_CA_BUNDLE", "SSL_CERT_FILE"}) {
+        if (const auto* value = std::getenv(variable); value && *value) return value;
+    }
+    static constexpr const char* candidates[]{
+        "/etc/ssl/cert.pem",                              // Alpine
+        "/etc/ssl/certs/ca-certificates.crt",            // Debian/Ubuntu/Synology DSM
+        "/etc/pki/tls/certs/ca-bundle.crt",              // RHEL/Fedora
+        "/etc/ssl/certs/ca-bundle.crt",                  // SUSE and derivatives
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    };
+    for (const auto* candidate : candidates) {
+        if (access(candidate, R_OK) == 0) return candidate;
+    }
+    return nullptr;
+}
 }
 HttpResult post_json(const Config& config, const std::string& body) {
     static CurlRuntime runtime;
@@ -151,6 +172,9 @@ HttpResult post_json(const Config& config, const std::string& body) {
     curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl.get(), CURLOPT_SSL_VERIFYHOST, 2L);
     curl_easy_setopt(curl.get(), CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    if (const auto* ca_bundle = portable_ca_bundle()) curl_easy_setopt(curl.get(), CURLOPT_CAINFO, ca_bundle);
+    if (const auto* ca_directory = std::getenv("SSL_CERT_DIR"); ca_directory && *ca_directory)
+        curl_easy_setopt(curl.get(), CURLOPT_CAPATH, ca_directory);
     curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, static_cast<long>(config.request_timeout_seconds));
     curl_easy_setopt(curl.get(), CURLOPT_CONNECTTIMEOUT, static_cast<long>(config.request_timeout_seconds));
     curl_easy_setopt(curl.get(), CURLOPT_NOSIGNAL, 1L);

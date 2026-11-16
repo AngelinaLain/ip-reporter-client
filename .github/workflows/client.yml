@@ -59,8 +59,9 @@ jobs:
         env:
           BUILD_IMAGE: ${{ matrix.container }}
           NATIVE_PACKAGE: ${{ matrix.native }}
+          STATIC_BUILD: ${{ matrix.static }}
         run: |
-          docker run --rm --volume "$GITHUB_WORKSPACE:/source" --workdir /source \
+          docker run --rm --env STATIC_BUILD --volume "$GITHUB_WORKSPACE:/source" --workdir /source \
             "$BUILD_IMAGE" sh ci/build-linux.sh "$PACKAGE_PLATFORM" "$NATIVE_PACKAGE"
       - name: Build, test and package Windows
         if: runner.os == 'Windows'
