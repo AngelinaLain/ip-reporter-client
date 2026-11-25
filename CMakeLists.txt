@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ip-reporter VERSION 1.1.2 LANGUAGES CXX)
+project(ip-reporter VERSION 1.1.3 LANGUAGES CXX)
 
 option(IP_REPORTER_STATIC "Build a fully static Linux executable (intended for musl toolchains)" OFF)
 

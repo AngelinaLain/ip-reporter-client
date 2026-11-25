@@ -11,7 +11,7 @@ C++17 客户端读取机器的网卡 ID、IPv4、IPv6 和 MAC，并通过 HTTPS 
 | Windows x64 / ARM64 | `windows-x86_64` / `windows-arm64` |
 | Ubuntu 22.04 x64 | `ubuntu22.04-x86_64` |
 | Ubuntu 24.04 x64 / ARM64 | `ubuntu24.04-x86_64` / `ubuntu24.04-arm64` |
-| Debian 12 / 13 x64 | `debian12-x86_64` / `debian13-x86_64` |
+| Debian 12 x64 / ARM64、Debian 13 x64 | `debian12-x86_64` / `debian12-arm64` / `debian13-x86_64` |
 | Rocky Linux 9 x64 | `rocky9-x86_64` |
 | Alpine Linux 3.22 x64 | `alpine3.22-x86_64` |
 | 静态 Linux (musl) x64 / ARM64 | `linux-musl-x86_64` / `linux-musl-arm64` |
